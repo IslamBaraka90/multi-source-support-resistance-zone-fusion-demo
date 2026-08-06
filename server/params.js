@@ -21,6 +21,7 @@ export const DEFAULT_PARAMS = {
   minimumSources: 2,     // distinct sources a zone must have to be accepted
   zigzagAtr: 3,          // zigzag reversal threshold, in ATR
   valueAreaFraction: 0.7,
+  roundStep: 0,          // round-number grid, in rungs from auto (see deriveBaseUnit)
 };
 
 export function coerceParams(raw = {}) {
@@ -39,6 +40,7 @@ export function coerceParams(raw = {}) {
   p.minimumSources = Math.round(clamp(raw.minimumSources, 1, 4, p.minimumSources));
   p.zigzagAtr = clamp(raw.zigzagAtr, 0.5, 15, p.zigzagAtr);
   p.valueAreaFraction = clamp(raw.valueAreaFraction, 0.5, 0.95, p.valueAreaFraction);
+  p.roundStep = Math.round(clamp(raw.roundStep, -3, 3, p.roundStep));
   return p;
 }
 
@@ -116,20 +118,55 @@ export function deriveFusionTolerance(fusionAtr, atrMedian, lastClose) {
  * Picked from the 1 / 2 / 5 x 10^k ladder so that the visible price range holds
  * roughly 8 to 40 levels: fewer and the source contributes nothing, more and it
  * votes on every zone and stops being evidence.
+ *
+ * `step` moves along that ladder from the automatic choice: -1 is one rung
+ * finer (more levels, each weaker as evidence), +1 one rung coarser. It is
+ * expressed in rungs rather than as a price for the same reason as everything
+ * else here — "5" means a sensible grid on a $300 stock and a meaningless one
+ * on a ¥40,000 index, whereas "one rung coarser" travels.
  */
-export function deriveBaseUnit(low, high, tick) {
+export function deriveBaseUnit(low, high, tick, step = 0) {
   const span = Math.max(high - low, tick);
   const target = span / 20;
   const exponent = Math.floor(Math.log10(target));
-  const ladder = [1, 2, 5].map((m) => m * 10 ** exponent)
-    .concat([1, 2, 5].map((m) => m * 10 ** (exponent + 1)));
 
-  for (const unit of ladder) {
-    if (unit < tick) continue;
-    const count = Math.floor(span / unit);
-    if (count >= 8 && count <= 40) return snapToTick(unit, tick);
+  const rungs = [];
+  for (let e = exponent - 2; e <= exponent + 2; e += 1) {
+    for (const m of [1, 2, 5]) {
+      const unit = m * 10 ** e;
+      if (unit >= tick && unit <= span) rungs.push(snapToTick(unit, tick));
+    }
   }
-  return snapToTick(Math.max(ladder[0], tick), tick);
+
+  const ladder = [...new Set(rungs)].sort((a, b) => a - b);
+  if (!ladder.length) {
+    const unit = snapToTick(Math.max(tick, span / 10), tick);
+    return { unit, ladder: [unit], index: 0, autoIndex: 0, levelCount: Math.floor(span / unit) };
+  }
+
+  // Auto: the finest rung that still yields 8..40 levels; failing that, the
+  // rung closest to the target spacing.
+  let autoIndex = ladder.findIndex((unit) => {
+    const count = Math.floor(span / unit);
+    return count >= 8 && count <= 40;
+  });
+  if (autoIndex < 0) {
+    autoIndex = ladder.reduce(
+      (best, unit, i) => (Math.abs(unit - target) < Math.abs(ladder[best] - target) ? i : best), 0);
+  }
+
+  let index = Math.min(ladder.length - 1, Math.max(0, autoIndex + step));
+  // A very fine grid would put a round number on every zone and stop being
+  // evidence — and would ship a few thousand levels to the browser.
+  while (index < ladder.length - 1 && span / ladder[index] > 250) index += 1;
+
+  return {
+    unit: ladder[index],
+    ladder,
+    index,
+    autoIndex,
+    levelCount: Math.floor(span / ladder[index]),
+  };
 }
 
 /*

@@ -2,9 +2,15 @@
  * The page. No framework, no build step — the whole client is this file, the
  * stylesheet, and the chart library served from node_modules.
  *
- * Layout: chart and tables in the main column, every parameter plus the
- * pipeline trace and data quality in a sticky sidebar, so the inputs and the
- * consequences are on screen together.
+ * Two views over ONE analysis:
+ *
+ *   Simple    the two zones either side of the current price, in plain English.
+ *             The default, because that is the question most people actually
+ *             have.
+ *   Advanced  every zone, every source, every parameter, the pipeline trace.
+ *
+ * Switching modes is a pure view change — same report, no refetch — so the two
+ * can never disagree about what the numbers are.
  */
 
 const LWC = window.LightweightCharts;
@@ -24,6 +30,14 @@ const GRADE_COLOUR = {
   depleted: "#7d8fa8",
 };
 
+/* Grades are the library's word. This is what they mean to a human. */
+const GRADE_PLAIN = {
+  strong: "price has reacted here often and recently",
+  moderate: "price has reacted here a few times",
+  weak: "some reaction here, but old or thin",
+  depleted: "price has broken through this repeatedly",
+};
+
 /*
  * Each slider says what it does AND why it is not a constant. The hints are the
  * most useful text on the page: they are the traps this app hit while it was
@@ -34,6 +48,8 @@ const SLIDERS = [
     hint: "fusion_tolerance is in ABSOLUTE PRICE, which the docs do not say. Proven by experiment: the published example re-run at 100× scale fuses nothing. Derived from ATR here." },
   { key: "minimumSources", label: "Min distinct sources", min: 1, max: 4, step: 1, unit: " of 4",
     hint: "Below this a cluster is rejected as insufficient-distinct-sources. Two levels from one source count once." },
+  { key: "roundStep", label: "Round-number grid", min: -3, max: 3, step: 1, unit: " rungs",
+    hint: "Moves along the 1/2/5 ladder from the automatic choice. Finer means more round numbers, each weaker as evidence; coarser means only the prices people actually watch. In rungs, not price, so it travels across instruments." },
   { key: "swingSpan", label: "Swing span", min: 2, max: 20, step: 1, unit: " bars",
     hint: "Bars either side of a pivot. Also the confirmation lag." },
   { key: "prominenceAtr", label: "Pivot prominence", min: 0, max: 2, step: 0.05, unit: "× ATR",
@@ -55,7 +71,7 @@ const SLIDERS = [
 /*
  * Proximity first, deliberately. The library's score has no proximity term — a
  * zone 48% away can outrank the one price is sitting on — so ordering by score
- * alone buries the only zones that matter today. Score is one click away.
+ * alone buries the only zones that matter today.
  */
 const SORTS = {
   proximity: (a, b) => Math.abs(a.distanceBps ?? 1e9) - Math.abs(b.distanceBps ?? 1e9),
@@ -71,14 +87,13 @@ const SORT_NOTE = {
 
 let config = null;
 let defaults = {};
-let chart = null;
-let candles = null;
-let volume = null;
-let markers = null;
-let priceLines = [];
 let lastReport = null;
 let sortMode = "proximity";
+let mode = localStorage.getItem("srMode") === "advanced" ? "advanced" : "simple";
 let inFlight = null;
+
+let advancedPane = null;
+let simplePane = null;
 
 const sortedZones = (report) => [...report.zones].sort(SORTS[sortMode] ?? SORTS.proximity);
 
@@ -98,7 +113,6 @@ async function init() {
     .map((p, i) => `<option value="${i}">${p.label}</option>`).join("");
 
   buildSliders();
-  buildChart();
 
   $("query").addEventListener("submit", (event) => { event.preventDefault(); run(); });
 
@@ -107,16 +121,39 @@ async function init() {
     run();
   });
 
-  // Re-sorting is a view change, not a recompute — no round trip to Yahoo.
+  // Re-sorting and mode switching are view changes, not recomputes.
   $("sortMode").addEventListener("change", (event) => {
     sortMode = event.target.value;
     if (lastReport) {
       renderZones(lastReport);
-      drawPriceLines(lastReport);
+      advancedPane?.setLines(sortedZones(lastReport).slice(0, 6), lastReport);
     }
   });
 
+  $("modeSimple").addEventListener("click", () => setMode("simple"));
+  $("modeAdvanced").addEventListener("click", () => setMode("advanced"));
+  $("toAdvanced").addEventListener("click", () => setMode("advanced"));
+
+  applyMode();
   run();
+}
+
+function setMode(next) {
+  if (mode === next) return;
+  mode = next;
+  localStorage.setItem("srMode", mode);
+  applyMode();
+  if (lastReport) render(lastReport);
+}
+
+function applyMode() {
+  const simple = mode === "simple";
+  $("simpleView").hidden = !simple;
+  $("advancedView").hidden = simple;
+  $("advancedFooter").hidden = simple;
+  $("modeSimple").classList.toggle("on", simple);
+  $("modeAdvanced").classList.toggle("on", !simple);
+  for (const el of document.querySelectorAll(".advanced-only")) el.hidden = simple;
 }
 
 function buildSliders() {
@@ -137,7 +174,18 @@ function buildSliders() {
   }
 }
 
-const paint = (s, value) => { $(`v-${s.key}`).textContent = `${value}${s.unit ?? ""}`; };
+function paint(s, value) {
+  // The round-number grid is the one slider whose number means nothing on its
+  // own — say what it resolves to once a report exists.
+  if (s.key === "roundStep") {
+    const grid = lastReport?.sources.find((x) => x.tag === "round-number")?.extra?.grid;
+    const n = Number(value);
+    const word = n === 0 ? "auto" : `${n > 0 ? "+" : ""}${n}`;
+    $(`v-${s.key}`).textContent = grid ? `${word} → ${grid.unit}` : word;
+    return;
+  }
+  $(`v-${s.key}`).textContent = `${value}${s.unit ?? ""}`;
+}
 
 function setSlider(s, value) {
   $(`p-${s.key}`).value = value;
@@ -192,17 +240,148 @@ function banner(message, kind = "error") {
 }
 
 function render(report) {
+  for (const s of SLIDERS) paint(s, $(`p-${s.key}`).value);
+  if (mode === "simple") renderSimple(report);
+  else renderAdvanced(report);
+}
+
+/* ====================================================== SIMPLE ============ */
+
+/** The nearest accepted zone above the last close, and the nearest below it. */
+function bracket(report) {
+  const above = report.zones
+    .filter((z) => z.center > report.lastClose)
+    .sort((a, b) => a.center - b.center)[0] ?? null;
+  const below = report.zones
+    .filter((z) => z.center <= report.lastClose)
+    .sort((a, b) => b.center - a.center)[0] ?? null;
+  return { above, below };
+}
+
+function renderSimple(report) {
+  const dp = decimals(report.derived.tickSize);
+  const { above, below } = bracket(report);
+  const inside = report.zones.find((z) => z.insideZone) ?? null;
+
+  $("sSymbol").textContent = `${report.meta.symbol} · ${report.meta.name}`;
+  $("sMeta").textContent = `${report.meta.exchange} · ${report.window.bars} daily bars to ${date(report.asOf)}`;
+  $("sPrice").textContent = num(report.lastClose, dp);
+  $("sPriceNote").textContent = `${report.meta.currency} · last close`;
+
+  $("sLadder").innerHTML = [
+    zoneCard("resistance", above, report, dp),
+    `<div class="rung-now">
+       <span class="rung-tag">Price now</span>
+       <span class="rung-price">${num(report.lastClose, dp)}</span>
+       <span class="rung-note muted">${inside
+         ? `Price is <em>inside</em> zone ${inside.zoneId} right now — it is not above or below this level, it is in it.`
+         : "Between the two zones below and above."}</span>
+     </div>`,
+    zoneCard("support", below, report, dp),
+  ].join("");
+
+  $("sWhy").innerHTML =
+    `Four independent methods each propose their own levels &mdash; swing pivots, ` +
+    `round numbers, volume profile and Fibonacci. Only prices where <em>several ` +
+    `different methods land in the same place</em> become a zone. On ` +
+    `${report.meta.symbol} that filter kept ${report.zones.length} zones and ` +
+    `rejected ${report.rejected.length} clusters for having too few distinct ` +
+    `sources. The two shown here are the closest above and below the price.`;
+
+  const contractCount = Object.values(report.tiers).filter((t) => t === "contract").length;
+  $("sTrust").innerHTML =
+    `These come from ${report.sourcesAvailable} of 4 methods on ` +
+    `${report.window.bars} bars of daily data. ${contractCount} of the ` +
+    `${Object.keys(report.tiers).length} calculations behind them are shape-checked ` +
+    `but not cross-checked against an independent published figure. A zone is ` +
+    `where price <em>has</em> reacted, which is not a promise that it will again.`;
+
+  // Build the simple chart lazily, the first time it is actually shown.
+  if (!simplePane) simplePane = createPane("simpleChart", "simpleOverlay");
+  const shown = [above, below].filter(Boolean);
+  simplePane.setData(report, { markers: false });
+  simplePane.setLines(shown, report);
+  simplePane.setZones(shown);
+}
+
+function zoneCard(kind, zone, report, dp) {
+  const isResistance = kind === "resistance";
+  const label = isResistance ? "Next resistance above" : "Next support below";
+
+  if (!zone) {
+    return `<div class="rung rung-${kind} rung-empty">
+      <span class="rung-tag">${label}</span>
+      <span class="rung-price">none</span>
+      <span class="rung-note muted">No zone ${isResistance ? "above" : "below"} the
+        current price cleared the agreement threshold in this window. That is a
+        real answer, not a missing one — widen the range to look further back.</span>
+    </div>`;
+  }
+
+  const pct = Math.abs(zone.distanceBps / 100).toFixed(2);
+  const colour = GRADE_COLOUR[zone.grade] ?? "#7d8fa8";
+
+  return `<div class="rung rung-${kind}" style="--rung:${colour}">
+    <span class="rung-tag">${label}</span>
+    <span class="rung-price">${num(zone.center, dp)}</span>
+    <span class="rung-move">${pct}% ${isResistance ? "above" : "below"} the price</span>
+    <div class="rung-band">
+      Anywhere in <b>${num(zone.lower, dp)} – ${num(zone.upper, dp)}</b> counts as this zone
+    </div>
+    <div class="rung-meta">
+      <span class="rung-agree"><b>${zone.sourceCount}</b> of ${zone.sourcesAvailable} methods agree</span>
+      <div class="chips">${zone.sources.map((s) => `<span class="chip chip-${s}">${plainSource(s)}</span>`).join("")}</div>
+    </div>
+    <div class="rung-strength">
+      <span class="bar"><i style="width:${Math.max(3, zone.score)}%;background:${colour}"></i></span>
+      <span class="grade grade-${zone.grade}">${zone.grade}</span>
+      <span class="muted">— ${GRADE_PLAIN[zone.grade] ?? ""}</span>
+    </div>
+    <div class="rung-history muted">
+      Price has touched this band <b>${zone.touchCount}</b> time${zone.touchCount === 1 ? "" : "s"}
+      and closed decisively through it <b>${zone.breakCount}</b> time${zone.breakCount === 1 ? "" : "s"}.
+      ${zone.roleReversal?.confirmed
+        ? `It used to act as the opposite and has since flipped to ${zone.roleReversal.finalRole}.`
+        : ""}
+    </div>
+  </div>`;
+}
+
+const plainSource = (tag) => ({
+  pivot: "swing highs & lows",
+  "round-number": "round numbers",
+  "volume-profile": "heavy volume",
+  fibonacci: "Fibonacci",
+}[tag] ?? tag);
+
+/* ==================================================== ADVANCED ============ */
+
+function renderAdvanced(report) {
+  if (!advancedPane) advancedPane = createPane("chart", "zoneOverlay");
+
   renderHeader(report);
   renderSummary(report);
-  renderChart(report);
+
+  advancedPane.setData(report, { markers: true });
+  advancedPane.setLines(sortedZones(report).slice(0, 6), report);
+  advancedPane.setZones(report.zones);
+
+  $("chartLegend").innerHTML =
+    report.sources.map((s) => `
+      <span><i style="background:${SOURCE_COLOUR[s.tag]}"></i>${s.label}${
+        s.unavailable ? " (n/a)" : ` ${s.levelCount}`}</span>`).join("")
+    + `<span><i style="background:#2ea875"></i>strong</span>`
+    + `<span><i style="background:#4c8dff"></i>moderate</span>`
+    + `<span><i style="background:#d29922"></i>weak</span>`
+    + `<span><i style="background:#7d8fa8;height:7px;width:7px;border-radius:50%"></i>pivot (${report.pivots.length})</span>`
+    + `<span><i style="background:rgba(46,168,117,0.38)"></i>volume, daily</span>`;
+
   renderZones(report);
   renderSources(report);
   renderRejected(report);
   renderTrace(report);
   renderQuality(report);
 }
-
-/* ------------------------------------------------------------------ header */
 
 function renderHeader(report) {
   const dp = decimals(report.derived.tickSize);
@@ -217,11 +396,14 @@ function renderHeader(report) {
 
 function renderSummary(report) {
   const dp = decimals(report.derived.tickSize);
+  const nearest = [...report.zones].sort(SORTS.proximity)[0];
+
   const stats = [
     ["Last close", num(report.lastClose, dp), `${report.meta.currency} · ${date(report.asOf)}`],
     ["Sources available", `${report.sourcesAvailable} / 4`, "denominator of source_confluence"],
     ["Accepted zones", report.zones.length, `${report.rejected.length} clusters rejected`],
-    ["Nearest zone", nearestLabel(report, dp), "by absolute distance"],
+    ["Nearest zone", nearest ? num(nearest.center, dp) : "—",
+      nearest ? `${nearest.zoneId} · ${nearest.sourceCount}/${nearest.sourcesAvailable} sources · ${Math.abs(nearest.distanceBps).toFixed(0)} bps` : "—"],
     ["ATR median", num(report.atr.median, dp), `period ${report.atr.period} · ${report.atr.warmupBars} warm-up nulls`],
     ["Fusion tolerance", num(report.derived.fusionTolerance, dp), `${report.params.fusionAtr}× ATR, in price`],
     ["Tick size", report.derived.tickSize, "derived from price magnitude"],
@@ -232,42 +414,41 @@ function renderSummary(report) {
     <dl class="stat"><dt>${label}</dt><dd>${value}<span class="sub">${sub}</span></dd></dl>`).join("");
 }
 
-function nearestLabel(report, dp) {
-  const nearest = [...report.zones].sort(SORTS.proximity)[0];
-  if (!nearest) return "—";
-  return `${num(nearest.center, dp)}<span class="sub">${nearest.zoneId} · ${nearest.sourceCount}/${nearest.sourcesAvailable} sources · ${Math.abs(nearest.distanceBps).toFixed(0)} bps</span>`;
-}
+/* ======================================================= CHART ============ */
 
-/* ------------------------------------------------------------------- chart */
+/*
+ * One factory, two panes. The simple view gets its own chart rather than
+ * sharing: moving a lightweight-charts host between hidden containers breaks
+ * its sizing, and a second instance costs far less than the bugs that causes.
+ */
+function createPane(hostId, overlayId) {
+  const host = $(hostId);
+  const svg = $(overlayId);
 
-function buildChart() {
-  const host = $("chart");
-
-  chart = LWC.createChart(host, {
+  const chart = LWC.createChart(host, {
     layout: { background: { type: LWC.ColorType.Solid, color: "transparent" }, textColor: "#8b98a9", fontSize: 11 },
     grid: { vertLines: { color: "rgba(38,49,64,0.45)" }, horzLines: { color: "rgba(38,49,64,0.45)" } },
     rightPriceScale: { borderColor: "#263140", scaleMargins: { top: 0.06, bottom: 0.26 } },
     timeScale: { borderColor: "#263140", rightOffset: 6 },
     crosshair: { mode: LWC.CrosshairMode.Normal },
     // The chart sits inside a scrolling page. Left on, the wheel zooms the
-    // chart instead of scrolling past it and the page becomes a trap. Dragging
-    // the body and the axes still pans and scales.
+    // chart instead of scrolling past it and the page becomes a trap.
     handleScale: { mouseWheel: false, axisPressedMouseMove: true, pinch: true },
   });
 
-  candles = chart.addSeries(LWC.CandlestickSeries, {
+  const candles = chart.addSeries(LWC.CandlestickSeries, {
     upColor: "#2ea875", downColor: "#e5534b",
     borderUpColor: "#2ea875", borderDownColor: "#e5534b",
     wickUpColor: "#2ea875", wickDownColor: "#e5534b",
   });
 
   /*
-   * Volume on its own overlay scale, pinned to the bottom fifth. It shares the
-   * pane so the candles keep their height. This is the DAILY structure series'
-   * volume — not the intraday tape the volume profile is built from. Those are
-   * different series and conflating them would misrepresent the profile.
+   * Volume on its own overlay scale, pinned to the bottom fifth so the candles
+   * keep their height. This is the DAILY structure series' volume — NOT the
+   * intraday tape the volume profile is built from. Different series;
+   * conflating them would misrepresent where the profile came from.
    */
-  volume = chart.addSeries(LWC.HistogramSeries, {
+  const volume = chart.addSeries(LWC.HistogramSeries, {
     priceScaleId: "volume",
     priceFormat: { type: "volume" },
     priceLineVisible: false,
@@ -275,128 +456,118 @@ function buildChart() {
   });
   chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 }, visible: false });
 
-  markers = LWC.createSeriesMarkers(candles, []);
+  const markers = LWC.createSeriesMarkers(candles, []);
 
-  chart.timeScale().subscribeVisibleLogicalRangeChange(drawZones);
+  const pane = { chart, candles, volume, markers, lines: [], zones: [], report: null };
+
+  pane.setData = (report, { markers: showMarkers }) => {
+    pane.report = report;
+    const dp = decimals(report.derived.tickSize);
+    const time = (iso) => Math.floor(Date.parse(iso) / 1000);
+
+    candles.applyOptions({
+      priceFormat: { type: "price", precision: dp, minMove: report.derived.tickSize },
+    });
+
+    candles.setData(report.bars.map((bar) => ({
+      time: time(bar.timestamp),
+      open: bar.open, high: bar.high, low: bar.low, close: bar.close,
+    })));
+
+    volume.setData(report.bars.map((bar) => ({
+      time: time(bar.timestamp),
+      value: bar.volume,
+      color: bar.close >= bar.open ? "rgba(46,168,117,0.38)" : "rgba(229,83,75,0.38)",
+    })));
+
+    // Pivots sit at the bar where the swing OCCURRED, not where it was
+    // confirmed. Off in the simple view — it is a detail, not an answer.
+    markers.setMarkers(showMarkers
+      ? report.pivots.map((pivot) => ({
+        time: time(report.bars[pivot.event_index].timestamp),
+        position: pivot.kind === "high" ? "aboveBar" : "belowBar",
+        color: "#7d8fa8",
+        shape: pivot.kind === "high" ? "arrowDown" : "arrowUp",
+        size: 0.6,
+      }))
+      : []);
+
+    chart.timeScale().fitContent();
+  };
+
+  /* Labelled lines drawn by the chart itself, so each gets a price-axis label. */
+  pane.setLines = (zones, report) => {
+    for (const line of pane.lines.splice(0)) candles.removePriceLine(line);
+    for (const zone of zones) {
+      pane.lines.push(candles.createPriceLine({
+        price: zone.center,
+        color: GRADE_COLOUR[zone.grade] ?? "#7d8fa8",
+        // Thickness carries agreement, so multi-source zones read first.
+        lineWidth: Math.min(4, zone.sourceCount),
+        lineStyle: zone.sourceCount >= 3 ? LWC.LineStyle.Solid : LWC.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: `${zone.zoneId} · ${zone.sourceCount}/${zone.sourcesAvailable} · ${zone.grade} ${zone.score.toFixed(0)}`,
+      }));
+      void report;
+    }
+  };
+
+  pane.setZones = (zones) => { pane.zones = zones; pane.draw(); };
+
+  /*
+   * Zones as shaded bands. A zone IS a band — collapsing it to a line would
+   * hide the width, which is what the fusion actually produces.
+   */
+  pane.draw = () => {
+    const width = host.clientWidth;
+    const height = host.clientHeight;
+    if (!width || !height) return;
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+    // Stop at the price axis rather than guessing its width.
+    const plotWidth = Math.max(0, width - chart.priceScale("right").width());
+
+    // Furthest first, so the zones price is near end up drawn on top.
+    const ordered = [...pane.zones]
+      .sort((a, b) => Math.abs(b.distanceBps ?? 0) - Math.abs(a.distanceBps ?? 0));
+
+    svg.innerHTML = ordered.map((zone) => {
+      const top = candles.priceToCoordinate(zone.upper);
+      const bottom = candles.priceToCoordinate(zone.lower);
+      if (top === null || bottom === null) return "";
+
+      const rawHeight = Math.abs(bottom - top);
+      // A tight zone on a wide price range collapses to a sub-pixel sliver.
+      // Give every band a floor so it reads AS a band.
+      const h = Math.max(3, rawHeight);
+      const y = Math.min(top, bottom) - (h - rawHeight) / 2;
+
+      const colour = GRADE_COLOUR[zone.grade] ?? "#7d8fa8";
+      // More agreement, more presence. The opacity IS the source count.
+      const alpha = 0.08 + 0.09 * zone.sourceCount;
+      const label = `${zone.zoneId} · ${zone.sourceCount}/${zone.sourcesAvailable} · ${zone.grade} ${zone.score.toFixed(0)}`;
+
+      return `
+        <rect x="0" y="${y}" width="${plotWidth}" height="${h}" fill="${colour}" fill-opacity="${alpha}"/>
+        <line x1="0" y1="${y}" x2="${plotWidth}" y2="${y}" stroke="${colour}" stroke-opacity="0.7"/>
+        <line x1="0" y1="${y + h}" x2="${plotWidth}" y2="${y + h}" stroke="${colour}" stroke-opacity="0.7"/>
+        <text x="7" y="${y - 3}" fill="${colour}" font-size="10" font-family="ui-monospace, monospace"
+              paint-order="stroke" stroke="#0d1117" stroke-width="3" opacity="0.95">${label}</text>`;
+    }).join("");
+  };
+
+  chart.timeScale().subscribeVisibleLogicalRangeChange(() => pane.draw());
 
   // Track the container rather than the window: the panel also changes width
-  // when the layout collapses to one column.
+  // when the layout collapses to one column, and when a hidden view is shown.
   new ResizeObserver(([entry]) => {
     const { width, height } = entry.contentRect;
     if (!width || !height) return;
     chart.applyOptions({ width, height });
-    drawZones();
+    pane.draw();
   }).observe(host);
-}
 
-function renderChart(report) {
-  const dp = decimals(report.derived.tickSize);
-  const time = (iso) => Math.floor(Date.parse(iso) / 1000);
-
-  candles.applyOptions({
-    priceFormat: { type: "price", precision: dp, minMove: report.derived.tickSize },
-  });
-
-  candles.setData(report.bars.map((bar) => ({
-    time: time(bar.timestamp),
-    open: bar.open, high: bar.high, low: bar.low, close: bar.close,
-  })));
-
-  volume.setData(report.bars.map((bar) => ({
-    time: time(bar.timestamp),
-    value: bar.volume,
-    color: bar.close >= bar.open ? "rgba(46,168,117,0.38)" : "rgba(229,83,75,0.38)",
-  })));
-
-  // Pivots sit at the bar where the swing OCCURRED, not where it was confirmed.
-  markers.setMarkers(report.pivots.map((pivot) => ({
-    time: time(report.bars[pivot.event_index].timestamp),
-    position: pivot.kind === "high" ? "aboveBar" : "belowBar",
-    color: "#7d8fa8",
-    shape: pivot.kind === "high" ? "arrowDown" : "arrowUp",
-    size: 0.6,
-  })));
-
-  drawPriceLines(report);
-  chart.timeScale().fitContent();
-  requestAnimationFrame(drawZones);
-
-  $("chartLegend").innerHTML =
-    report.sources.map((s) => `
-      <span><i style="background:${SOURCE_COLOUR[s.tag]}"></i>${s.label}${
-        s.unavailable ? " (n/a)" : ` ${s.levelCount}`}</span>`).join("")
-    + `<span><i style="background:#2ea875"></i>strong</span>`
-    + `<span><i style="background:#4c8dff"></i>moderate</span>`
-    + `<span><i style="background:#d29922"></i>weak</span>`
-    + `<span><i style="background:#7d8fa8;height:7px;width:7px;border-radius:50%"></i>pivot (${report.pivots.length})</span>`
-    + `<span><i style="background:rgba(46,168,117,0.38)"></i>volume, daily</span>`;
-}
-
-/*
- * Labelled lines for the zones worth naming, drawn by the chart library itself
- * so each gets a price-axis label. Every zone still gets a shaded band; only
- * the top few get a line, because 22 axis labels is not a chart.
- */
-function drawPriceLines(report) {
-  if (!candles) return;
-  for (const line of priceLines.splice(0)) candles.removePriceLine(line);
-
-  for (const zone of sortedZones(report).slice(0, 6)) {
-    priceLines.push(candles.createPriceLine({
-      price: zone.center,
-      color: GRADE_COLOUR[zone.grade] ?? "#7d8fa8",
-      // Thickness carries agreement, so multi-source zones read first.
-      lineWidth: Math.min(4, zone.sourceCount),
-      lineStyle: zone.sourceCount >= 3 ? LWC.LineStyle.Solid : LWC.LineStyle.Dashed,
-      axisLabelVisible: true,
-      title: `${zone.zoneId} · ${zone.sourceCount}/${zone.sourcesAvailable} · ${zone.grade} ${zone.score.toFixed(0)}`,
-    }));
-  }
-}
-
-/*
- * Zones as shaded bands. A zone IS a band — collapsing it to a line would hide
- * the width, which is the thing the fusion actually produces.
- */
-function drawZones() {
-  const svg = $("zoneOverlay");
-  if (!lastReport || !candles || !chart) return;
-
-  const host = $("chart");
-  const width = host.clientWidth;
-  const height = host.clientHeight;
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-
-  // Stop at the price axis rather than guessing its width.
-  const plotWidth = Math.max(0, width - chart.priceScale("right").width());
-
-  // Furthest first, so the zones price is near end up drawn on top.
-  const ordered = [...lastReport.zones]
-    .sort((a, b) => Math.abs(b.distanceBps ?? 0) - Math.abs(a.distanceBps ?? 0));
-
-  svg.innerHTML = ordered.map((zone) => {
-    const top = candles.priceToCoordinate(zone.upper);
-    const bottom = candles.priceToCoordinate(zone.lower);
-    if (top === null || bottom === null) return "";
-
-    const rawHeight = Math.abs(bottom - top);
-    // A tight zone on a wide price range collapses to a sub-pixel sliver. Give
-    // every band a floor so it reads AS a band.
-    const h = Math.max(3, rawHeight);
-    const y = Math.min(top, bottom) - (h - rawHeight) / 2;
-
-    const colour = GRADE_COLOUR[zone.grade] ?? "#7d8fa8";
-    // More agreement, more presence. The opacity IS the source count.
-    const alpha = 0.08 + 0.09 * zone.sourceCount;
-    const label = `${zone.zoneId} · ${zone.sourceCount}/${zone.sourcesAvailable} · ${zone.grade} ${zone.score.toFixed(0)}`;
-
-    return `
-      <rect x="0" y="${y}" width="${plotWidth}" height="${h}" fill="${colour}" fill-opacity="${alpha}"/>
-      <line x1="0" y1="${y}" x2="${plotWidth}" y2="${y}" stroke="${colour}" stroke-opacity="0.7"/>
-      <line x1="0" y1="${y + h}" x2="${plotWidth}" y2="${y + h}" stroke="${colour}" stroke-opacity="0.7"/>
-      <text x="7" y="${y - 3}" fill="${colour}" font-size="10" font-family="ui-monospace, monospace"
-            paint-order="stroke" stroke="#0d1117" stroke-width="3" opacity="0.95">${label}</text>`;
-  }).join("");
+  return pane;
 }
 
 /* ------------------------------------------------------------------- zones */
@@ -495,7 +666,11 @@ function extraLine(source, dp) {
     return `<div class="source-extra">${e.clusters} clusters accepted, ${e.noise} pivots left as noise.</div>`;
   }
   if (source.tag === "round-number") {
-    return `<div class="source-extra">Grid of ${e.baseUnit}. Closest level ${e.closest?.price ?? "—"} at ${num(e.closest?.distance_bps, 0)} bps.</div>`;
+    const g = e.grid;
+    const moved = g && g.step !== 0
+      ? ` Moved ${Math.abs(g.step)} rung${Math.abs(g.step) === 1 ? "" : "s"} ${g.step > 0 ? "coarser" : "finer"} than the automatic ${g.autoUnit}.`
+      : " Grid chosen automatically from the 1/2/5 ladder.";
+    return `<div class="source-extra">Grid of ${e.baseUnit}.${moved} Closest level ${e.closest?.price ?? "—"} at ${num(e.closest?.distance_bps, 0)} bps.</div>`;
   }
   if (source.tag === "volume-profile") {
     return `<div class="source-extra">POC ${num(e.poc, dp)} · value area ${num(e.valueAreaLow, dp)}–${num(e.valueAreaHigh, dp)} holding ${(e.valueAreaShare * 100).toFixed(1)}% of volume across ${e.bins} bins. ${e.hvn} HVNs fused; ${e.lvn} LVNs found but <em>not</em> fused — an LVN is a price that price moves through.</div>`;

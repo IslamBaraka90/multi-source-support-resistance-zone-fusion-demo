@@ -118,6 +118,95 @@ button.ghost:hover { color: var(--text); border-color: var(--muted); }
 }
 .banner.info { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
 
+/* ------------------------------------------------------------- mode toggle */
+
+.modes { display: flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+
+.mode {
+  background: transparent; color: var(--muted);
+  border: 0; border-radius: 0; padding: 8px 14px;
+  font-size: 12.5px; font-weight: 600;
+}
+.mode.on { background: var(--accent); color: #fff; }
+.mode:not(.on):hover { background: var(--panel-2); color: var(--text); }
+
+.linkish {
+  background: none; border: 0; padding: 0; margin: 0;
+  color: var(--accent); font: inherit; font-weight: 600;
+  text-decoration: underline; cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ simple */
+
+.simple { max-width: 1080px; margin: 0 auto; padding: 20px 22px 40px; display: grid; gap: 18px; }
+
+.simple-hero {
+  display: flex; flex-wrap: wrap; gap: 16px;
+  align-items: flex-end; justify-content: space-between;
+}
+.simple-hero h2 { font-size: 22px; text-transform: none; letter-spacing: -0.01em; color: var(--text); }
+.simple-hero p { margin: 4px 0 0; font-size: 12.5px; }
+
+.simple-price { text-align: right; }
+.simple-price span { font-family: var(--mono); font-size: 30px; font-weight: 650; letter-spacing: -0.02em; }
+.simple-price small { display: block; font-size: 11px; margin-top: 2px; }
+
+/* the resistance / price / support ladder */
+.ladder { display: grid; gap: 10px; }
+
+.rung {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--rung, var(--line));
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 16px 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.rung-tag {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); font-weight: 600;
+}
+.rung-price { font-family: var(--mono); font-size: 27px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.05; }
+.rung-move { font-size: 13px; color: var(--rung, var(--muted)); font-weight: 600; }
+.rung-band { font-size: 12.5px; color: var(--muted); }
+.rung-band b { font-family: var(--mono); color: var(--text); font-weight: 600; }
+
+.rung-meta { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.rung-agree { font-size: 12.5px; color: var(--muted); }
+.rung-agree b { font-family: var(--mono); font-size: 15px; color: var(--text); }
+
+.rung-strength { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; font-size: 12px; }
+.rung-strength .bar { width: 110px; flex: none; }
+.rung-history { font-size: 12px; line-height: 1.5; }
+.rung-history b { font-family: var(--mono); color: var(--text); }
+
+.rung-resistance { --rung: #e5534b; }
+.rung-support { --rung: #2ea875; }
+.rung-empty .rung-price { color: var(--muted); font-size: 20px; }
+
+.rung-now {
+  display: grid; gap: 4px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 12px 18px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.rung-now .rung-price { font-size: 20px; color: var(--accent); }
+.rung-note { font-size: 12px; }
+
+.explain { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.explain > div { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+.explain h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.explain p { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
+.explain strong { color: var(--text); }
+
+.simple-foot { font-size: 12px; line-height: 1.6; margin: 0; }
+.simple-foot strong { color: var(--text); }
+
+.simple #simpleChart { height: 420px; width: 100%; }
+
 /* ------------------------------------------------------------------ layout */
 
 .layout {

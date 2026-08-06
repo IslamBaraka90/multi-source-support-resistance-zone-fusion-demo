@@ -20,7 +20,7 @@ import { deriveBaseUnit, snapToTick } from "../params.js";
 
 export const TAG = "round-number";
 
-export function roundNumberLevels({ lastClose, low, high, tick }) {
+export function roundNumberLevels({ lastClose, low, high, tick, cfg }) {
   /*
    * The library requires lower_bound <= current_price <= upper_bound and will
    * throw otherwise. The window's own low and high satisfy that by definition —
@@ -29,7 +29,8 @@ export function roundNumberLevels({ lastClose, low, high, tick }) {
    */
   const lowerBound = snapToTick(Math.min(low, lastClose), tick);
   const upperBound = snapToTick(Math.max(high, lastClose), tick);
-  const baseUnit = deriveBaseUnit(lowerBound, upperBound, tick);
+  const grid = deriveBaseUnit(lowerBound, upperBound, tick, cfg?.roundStep ?? 0);
+  const baseUnit = grid.unit;
 
   let generated;
   try {
@@ -64,10 +65,20 @@ export function roundNumberLevels({ lastClose, low, high, tick }) {
 
   const byClass = (name) => generated.levels.filter((l) => l.class === name).length;
 
+  const offset = grid.index - grid.autoIndex;
+
   return {
     levels,
     closest: generated.closest_level,
     baseUnit: generated.base_unit,
+    grid: {
+      unit: grid.unit,
+      autoUnit: grid.ladder[grid.autoIndex],
+      step: offset,
+      ladder: grid.ladder,
+      index: grid.index,
+      autoIndex: grid.autoIndex,
+    },
     unavailable: null,
     trace: [{
       topic: "psychological-round-number-level-generation",
@@ -76,7 +87,11 @@ export function roundNumberLevels({ lastClose, low, high, tick }) {
         `${lowerBound} and ${upperBound} ` +
         `(${byClass("major")} major, ${byClass("half")} half, ${byClass("minor")} minor); ` +
         `closest is ${generated.closest_level.price} at ` +
-        `${generated.closest_level.distance_bps?.toFixed(1) ?? "n/a"} bps`,
+        `${generated.closest_level.distance_bps?.toFixed(1) ?? "n/a"} bps. ` +
+        (offset === 0
+          ? `Grid chosen automatically from the 1/2/5 ladder.`
+          : `Grid moved ${Math.abs(offset)} rung${Math.abs(offset) === 1 ? "" : "s"} ` +
+            `${offset > 0 ? "coarser" : "finer"} than the automatic ${grid.ladder[grid.autoIndex]}.`),
     }],
   };
 }

@@ -142,7 +142,7 @@ export async function analyze({ symbol, range, interval, tapePlan, params }) {
   /* ------------------------------------------------------ the four sources */
 
   const pivot = pivotLevels({ bars: clean, cfg, atrMedian });
-  const rounds = roundNumberLevels({ lastClose, low: windowLow, high: windowHigh, tick });
+  const rounds = roundNumberLevels({ lastClose, low: windowLow, high: windowHigh, tick, cfg });
   const volume = volumeProfileLevels({
     tape, tick, atrMedian, low: windowLow, high: windowHigh, cfg,
   });
@@ -257,7 +257,9 @@ export async function analyze({ symbol, range, interval, tapePlan, params }) {
 
 function extraFor(tag, result) {
   if (tag === "pivot") return { clusters: result.clusters?.length ?? 0, noise: result.noise?.length ?? 0 };
-  if (tag === "round-number") return { baseUnit: result.baseUnit ?? null, closest: result.closest ?? null };
+  if (tag === "round-number") {
+    return { baseUnit: result.baseUnit ?? null, closest: result.closest ?? null, grid: result.grid ?? null };
+  }
   if (tag === "volume-profile") {
     return result.features
       ? {

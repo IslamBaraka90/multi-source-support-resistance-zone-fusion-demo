@@ -63,8 +63,22 @@ the boundary.
 **13 topics.** Every displayed number carries its verification tier: `verified`
 means the arithmetic is replayed and asserted on every build of the library;
 `contract` means the shape is checked but the numbers are not cross-checked
-against an independent published figure. Eight of the thirteen are `contract`,
+against an independent published figure. Nine of the thirteen are `contract`,
 and the page says so rather than implying otherwise.
+
+## Two views over one analysis
+
+**Simple** is the default. It answers the question most people actually have:
+the nearest accepted zone above the price, the nearest below it, and what the
+numbers mean in plain English. Two levels, no jargon, and the chart shows only
+those two bands.
+
+**Advanced** is the whole working: every zone, every source's raw levels before
+fusion, the rejected clusters, all eleven parameters, and the pipeline trace
+with verification tiers.
+
+Switching is a pure view change over the same report — no refetch — so the two
+views can never disagree about what the numbers are.
 
 ---
 
@@ -112,6 +126,18 @@ returns the sorted keys, so a price band nobody traded in produces no row.
 `server/sources/volume-profile.js` re-inserts the missing bins at volume 0.
 That is not a fudge — a bin with no volume genuinely is a low-volume node — but
 skipping it would silently glue two non-adjacent price bands together.
+
+### 3b. The round-number grid decides what a round number is
+
+`psychological-round-number-level-generation` classifies every 10th multiple of
+`base_unit` as `major` and every 5th as `half`. So the base unit does not just
+space the levels — it decides which prices count as round at all.
+
+It is exposed as a slider, but in **rungs along the 1 / 2 / 5 ladder**, not as a
+price. Same reasoning as everything else here: "5" is a sensible grid on a $300
+stock and meaningless on a ¥40,000 index, whereas "one rung coarser" travels.
+On AAPL over two years, `auto` lands on a grid of 5 (35 levels, 22 zones); `+2`
+gives a grid of 20 (9 levels, 6 zones).
 
 ### 4. `docs.json` truncates nested example inputs without flagging them
 

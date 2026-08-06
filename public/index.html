@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Multi-Source Support &amp; Resistance Zone Fusion</title>
+<title>Support &amp; Resistance — multi-source zone fusion</title>
 <link rel="stylesheet" href="/styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#9707;</text></svg>">
 </head>
@@ -13,8 +13,8 @@
   <div class="brand">
     <span class="mark"></span>
     <div>
-      <h1>Multi-Source Zone Fusion</h1>
-      <p>Four independent level sources &rarr; <code>fintech-algorithms</code> &rarr; graded zones</p>
+      <h1>Support &amp; Resistance</h1>
+      <p>Four independent methods &rarr; <code>fintech-algorithms</code> &rarr; agreed zones</p>
     </div>
   </div>
 
@@ -27,21 +27,88 @@
       <span>Range</span>
       <select id="range"></select>
     </label>
-    <label class="field">
+    <label class="field advanced-only">
       <span>Interval</span>
       <select id="interval"></select>
     </label>
-    <label class="field">
+    <label class="field advanced-only">
       <span>Tape for profile</span>
       <select id="tapePlan"></select>
     </label>
     <button id="run" type="submit">Analyse</button>
+
+    <div class="modes" role="group" aria-label="View mode">
+      <button type="button" class="mode on" id="modeSimple">Simple</button>
+      <button type="button" class="mode" id="modeAdvanced">Advanced</button>
+    </div>
   </form>
 </header>
 
 <div id="banner" class="banner" hidden></div>
 
-<main class="layout">
+
+<!-- ==================================================== SIMPLE ============ -->
+
+<main id="simpleView" class="simple">
+
+  <section class="simple-hero">
+    <div>
+      <h2 id="sSymbol">&mdash;</h2>
+      <p id="sMeta" class="muted">Loading&hellip;</p>
+    </div>
+    <div class="simple-price">
+      <span id="sPrice">&mdash;</span>
+      <small id="sPriceNote" class="muted"></small>
+    </div>
+  </section>
+
+  <section class="ladder" id="sLadder"></section>
+
+  <section class="panel">
+    <div class="chart-wrap">
+      <div id="simpleChart"></div>
+      <svg id="simpleOverlay" class="zone-overlay" aria-hidden="true"></svg>
+    </div>
+  </section>
+
+  <section class="explain">
+    <div>
+      <h3>What these two numbers mean</h3>
+      <p>
+        <strong>Resistance</strong> is a price where sellers have repeatedly shown
+        up and pushed price back down. <strong>Support</strong> is where buyers
+        have repeatedly stepped in. They are places price has <em>reacted</em>
+        before &mdash; not a forecast that it will react again.
+      </p>
+    </div>
+    <div>
+      <h3>Why these two and not others</h3>
+      <p id="sWhy">
+        Four independent methods each propose their own levels. Only prices where
+        <em>several different methods land in the same place</em> become a zone.
+        Shown here are the closest accepted zone above the price and the closest
+        one below it.
+      </p>
+    </div>
+    <div>
+      <h3>How much to trust it</h3>
+      <p id="sTrust"></p>
+    </div>
+  </section>
+
+  <p class="simple-foot muted">
+    <strong>Analysis, not advice.</strong> These are computed descriptions of past
+    price behaviour. A level is an observation, not a prediction and not a
+    recommendation &mdash; for decisions about money, talk to a licensed adviser.
+    Want the full working? <button type="button" class="linkish" id="toAdvanced">Switch to Advanced</button>.
+  </p>
+
+</main>
+
+
+<!-- ================================================== ADVANCED ============ -->
+
+<main id="advancedView" class="layout" hidden>
 
   <section class="summary" id="summary"></section>
 
@@ -136,7 +203,7 @@
 
 </main>
 
-<footer class="footer">
+<footer class="footer" id="advancedFooter" hidden>
   <p>
     <strong>Analysis, not advice.</strong> These are computed quantities describing a
     price series. A level is an observation, not a prediction and not a
