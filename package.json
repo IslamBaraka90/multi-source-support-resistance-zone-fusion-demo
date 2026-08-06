@@ -11,6 +11,8 @@
   "scripts": {
     "start": "node app.js",
     "dev": "node --watch app.js",
+    "test": "node tools/replay-examples.mjs",
+    "smoke": "node tools/smoke.mjs",
     "probe": "node tools/probe-fusion.mjs"
   },
   "repository": {

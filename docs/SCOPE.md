@@ -1,6 +1,8 @@
 # Scope — Multi-Source Support & Resistance Zone Fusion
 
-**Status:** draft, awaiting review. Nothing in `server/` or `public/` is written yet.
+**Status:** built. All four decisions in §10 were approved as recommended and
+phases 1–5 are implemented; see the README for how to run it. This document is
+kept as the design record — where it says "the plan is", that plan shipped.
 **Library:** `fintech-algorithms@0.12.0` (324 topics), installed and probed.
 **Skill:** `IslamBaraka90/Fintech-Algorithms-Library` installed at `.agents/skills/fintech-algorithms`.
 
@@ -325,7 +327,10 @@ published figure — the UI says so rather than implying otherwise.
 
 ---
 
-## 10. Decisions I need from you
+## 10. Decisions — all four approved as recommended
+
+*Answered 2026-08-07: keep the volume profile, ESM entry point, watchlist
+deferred, `lightweight-charts`. The recommendations below are what shipped.*
 
 **A. Volume profile — keep or drop?**
 Keeping it means one documented approximation (bar → trade, §4) in an otherwise
@@ -354,13 +359,33 @@ you would rather I do it in plain SVG to keep the dependency count at one.
 
 ## 11. Phasing
 
-| Phase | Deliverable |
-|---|---|
-| 0 | ✅ repo, GitHub, skill install, library probe, this document |
-| 1 | Provider boundary + validation + ATR + `/healthz`, verified against the awkward symbols |
-| 2 | The four sources, each standalone, exposed via `/api/sources` |
-| 3 | Fusion + strength with real `source_confluence`, role reversal, breakout |
-| 4 | Frontend: chart, zone table, source panel, trace |
-| 5 | `npm test` replay harness, README, cPanel deployment notes |
+| Phase | Deliverable | |
+|---|---|---|
+| 0 | repo, GitHub, skill install, library probe, this document | ✅ |
+| 1 | Provider boundary + validation + ATR + `/healthz`, verified against the awkward symbols | ✅ |
+| 2 | The four sources, each standalone, exposed via `/api/sources` | ✅ |
+| 3 | Fusion + strength with real `source_confluence`, role reversal, breakout | ✅ |
+| 4 | Frontend: chart, zone table, source panel, trace | ✅ |
+| 5 | `npm test` replay harness, README, cPanel deployment notes | ✅ |
 
-Review this and tell me what to change — I will not start Phase 1 until you do.
+### What the build added to §3
+
+A fourth library finding, which only showed up once the replay harness existed:
+
+**3.5 — `docs.json`'s `elided` flag only covers top-level array arguments.**
+An array nested inside a record argument is truncated with `elided: null`, which
+is why §3.4 looked like a self-contradiction. This affects `record-transform`
+topics, which is 257 of the 324. `tools/replay-examples.mjs` classifies on the
+returned key set instead of on value equality because of it, and fails only when
+a documented key stops being returned.
+
+Related, and found the same way: `zigzag-segmentation` returns
+`{ pivots, states }` — its RETURNS type says so — but its captured example
+output shows only `pivots`. Harmless here, since this app reads `.pivots`, but
+it is the reason the harness treats "returns more than documented" as a report
+rather than a failure.
+
+### Deferred, unchanged
+
+Decision C stands: `market-wide-zone-proximity-scanner-ranking` (the watchlist
+route) is phase 2 work and is not built.

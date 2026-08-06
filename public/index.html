@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Source Support &amp; Resistance Zone Fusion</title>
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#9707;</text></svg>">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div>
+      <h1>Multi-Source Support &amp; Resistance Zone Fusion</h1>
+      <p class="lede">
+        Four independent methods propose price levels. Where they agree, a zone is
+        accepted and graded. Every number below is computed by
+        <code>fintech-algorithms</code>&nbsp;0.12.0 &mdash; this app only shapes the
+        data and shows the working.
+      </p>
+    </div>
+    <div class="masthead-legend">
+      <span class="tier tier-verified">verified</span>
+      <span class="tier tier-contract">contract</span>
+      <span class="tier tier-approximation">approximation</span>
+      <span class="legend-note">how strongly each step is attested</span>
+    </div>
+  </div>
+</header>
+
+<form id="controls" class="controls">
+  <div class="control-row">
+    <label class="field field-symbol">
+      <span>Symbol</span>
+      <input id="symbol" name="symbol" value="AAPL" autocomplete="off" spellcheck="false">
+    </label>
+
+    <label class="field">
+      <span>Range</span>
+      <select id="range" name="range"></select>
+    </label>
+
+    <label class="field">
+      <span>Interval</span>
+      <select id="interval" name="interval"></select>
+    </label>
+
+    <label class="field field-wide">
+      <span>Tape for volume profile</span>
+      <select id="tapePlan" name="tapePlan"></select>
+    </label>
+
+    <button type="submit" id="run">Analyse</button>
+  </div>
+
+  <details class="tuning">
+    <summary>Parameters <span class="hint">&mdash; every price-unit value is derived from ATR, never fixed</span></summary>
+    <div class="control-grid" id="sliders"></div>
+  </details>
+</form>
+
+<main id="main" hidden>
+
+  <section class="summary" id="summary"></section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Chart</h2>
+      <p>Accepted zones are shaded by grade. Darker means more sources agree.</p>
+    </div>
+    <div class="chart-wrap">
+      <div id="chart"></div>
+      <svg id="zoneOverlay" class="zone-overlay" aria-hidden="true"></svg>
+    </div>
+    <div class="chart-legend" id="chartLegend"></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Fused zones</h2>
+      <p id="zonesCaption"></p>
+    </div>
+    <div class="table-scroll">
+      <table class="zones" id="zoneTable"></table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>The four sources, before fusion</h2>
+      <p>
+        Each source runs on its own and never sees the others&rsquo; output. That
+        independence is what makes agreement mean something.
+      </p>
+    </div>
+    <div class="sources" id="sourcePanel"></div>
+  </section>
+
+  <section class="panel" id="rejectedPanel">
+    <div class="panel-head">
+      <h2>Rejected clusters</h2>
+      <p>
+        Levels that landed together but came from too few distinct sources.
+        &ldquo;No zone here&rdquo; is itself a finding, so they are shown rather than dropped.
+      </p>
+    </div>
+    <div class="table-scroll">
+      <table class="zones" id="rejectedTable"></table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Pipeline</h2>
+      <p>Every stage, the topic that did the work, and how strongly it is attested.</p>
+    </div>
+    <ol class="trace" id="trace"></ol>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Data quality</h2>
+      <p>What the vendor sent, and what survived.</p>
+    </div>
+    <div class="quality" id="quality"></div>
+  </section>
+
+</main>
+
+<div id="status" class="status"></div>
+
+<footer class="footer">
+  <p>
+    Analysis, not advice. These functions compute quantities; an indicator or a
+    level is an observation about a series, not a prediction and not a
+    recommendation. <strong>8 of the 13 topics used are <span class="tier tier-contract">contract</span></strong>
+    &mdash; their shape is checked but their arithmetic is not cross-checked against
+    an independent published figure.
+  </p>
+</footer>
+
+<script src="/vendor/lightweight-charts.js"></script>
+<script src="/app.js" type="module"></script>
+</body>
+</html>
