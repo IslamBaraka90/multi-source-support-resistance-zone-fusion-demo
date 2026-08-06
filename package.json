@@ -1,0 +1,26 @@
+{
+  "name": "multi-source-support-resistance-zone-fusion-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fuse pivot clusters, round numbers, volume profile and Fibonacci into graded support/resistance zones, computed with fintech-algorithms",
+  "type": "module",
+  "main": "app.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node --watch app.js",
+    "probe": "node tools/probe-fusion.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IslamBaraka90/multi-source-support-resistance-zone-fusion-demo.git"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1",
+    "fintech-algorithms": "^0.12.0",
+    "lightweight-charts": "^5.2.0"
+  }
+}
