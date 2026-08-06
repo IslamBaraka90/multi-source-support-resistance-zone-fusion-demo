@@ -9,134 +9,148 @@
 </head>
 <body>
 
-<header class="masthead">
-  <div class="masthead-inner">
+<header class="topbar">
+  <div class="brand">
+    <span class="mark"></span>
     <div>
-      <h1>Multi-Source Support &amp; Resistance Zone Fusion</h1>
-      <p class="lede">
-        Four independent methods propose price levels. Where they agree, a zone is
-        accepted and graded. Every number below is computed by
-        <code>fintech-algorithms</code>&nbsp;0.12.0 &mdash; this app only shapes the
-        data and shows the working.
-      </p>
-    </div>
-    <div class="masthead-legend">
-      <span class="tier tier-verified">verified</span>
-      <span class="tier tier-contract">contract</span>
-      <span class="tier tier-approximation">approximation</span>
-      <span class="legend-note">how strongly each step is attested</span>
+      <h1>Multi-Source Zone Fusion</h1>
+      <p>Four independent level sources &rarr; <code>fintech-algorithms</code> &rarr; graded zones</p>
     </div>
   </div>
-</header>
 
-<form id="controls" class="controls">
-  <div class="control-row">
-    <label class="field field-symbol">
+  <form id="query" class="query">
+    <label class="field symbol">
       <span>Symbol</span>
-      <input id="symbol" name="symbol" value="AAPL" autocomplete="off" spellcheck="false">
+      <input id="symbol" value="AAPL" autocomplete="off" spellcheck="false" required>
     </label>
-
     <label class="field">
       <span>Range</span>
-      <select id="range" name="range"></select>
+      <select id="range"></select>
     </label>
-
     <label class="field">
       <span>Interval</span>
-      <select id="interval" name="interval"></select>
+      <select id="interval"></select>
     </label>
-
-    <label class="field field-wide">
-      <span>Tape for volume profile</span>
-      <select id="tapePlan" name="tapePlan"></select>
+    <label class="field">
+      <span>Tape for profile</span>
+      <select id="tapePlan"></select>
     </label>
+    <button id="run" type="submit">Analyse</button>
+  </form>
+</header>
 
-    <button type="submit" id="run">Analyse</button>
-  </div>
+<div id="banner" class="banner" hidden></div>
 
-  <details class="tuning">
-    <summary>Parameters <span class="hint">&mdash; every price-unit value is derived from ATR, never fixed</span></summary>
-    <div class="control-grid" id="sliders"></div>
-  </details>
-</form>
-
-<main id="main" hidden>
+<main class="layout">
 
   <section class="summary" id="summary"></section>
 
-  <section class="panel">
+  <section class="panel chart-panel">
     <div class="panel-head">
-      <h2>Chart</h2>
-      <p>Accepted zones are shaded by grade. Darker means more sources agree.</p>
+      <div>
+        <h2 id="chartTitle">&mdash;</h2>
+        <p id="chartSub" class="muted">Loading&hellip;</p>
+      </div>
+      <div class="legend" id="chartLegend"></div>
     </div>
+
     <div class="chart-wrap">
       <div id="chart"></div>
       <svg id="zoneOverlay" class="zone-overlay" aria-hidden="true"></svg>
     </div>
-    <div class="chart-legend" id="chartLegend"></div>
+
+    <p class="chart-foot muted">
+      Every accepted zone is a shaded band &mdash; opacity is the source count, so
+      the strongest agreement is the most solid. The top six rows of the table
+      below also get a labelled line on the price axis, thickness following the
+      source count. Arrows mark pivots at the bar where the swing
+      <em>occurred</em>, not where it was confirmed &mdash; confirmation is
+      <strong id="lagNote">n</strong> bars later. Volume along the bottom is the
+      <em>daily</em> bars, not the intraday tape the volume profile is built from.
+    </p>
   </section>
 
-  <section class="panel">
+  <aside class="panel controls-panel">
+    <h2>Parameters</h2>
+    <p class="side-note">
+      Every price-unit value is derived from ATR. Release a slider to recompute.
+    </p>
+    <div class="params" id="sliders"></div>
+    <button id="reset" type="button" class="ghost">Reset to defaults</button>
+
+    <h2 class="mt">Pipeline</h2>
+    <ol id="trace" class="trace"><li class="muted">Not run yet.</li></ol>
+
+    <h2 class="mt">Data quality</h2>
+    <dl id="quality" class="quality"><dd class="muted">Not run yet.</dd></dl>
+    <div id="qualityNotes" class="quality-notes"></div>
+  </aside>
+
+  <section class="panel zones-panel">
     <div class="panel-head">
-      <h2>Fused zones</h2>
-      <p id="zonesCaption"></p>
+      <div>
+        <h2>Fused zones</h2>
+        <p id="zonesCaption" class="muted"></p>
+      </div>
+      <label class="field">
+        <span>Sort by</span>
+        <select id="sortMode">
+          <option value="proximity" selected>Nearest to price</option>
+          <option value="score">Strength score</option>
+          <option value="sources">Most sources</option>
+        </select>
+      </label>
     </div>
     <div class="table-scroll">
       <table class="zones" id="zoneTable"></table>
     </div>
   </section>
 
-  <section class="panel">
+  <section class="panel sources-panel">
     <div class="panel-head">
-      <h2>The four sources, before fusion</h2>
-      <p>
-        Each source runs on its own and never sees the others&rsquo; output. That
-        independence is what makes agreement mean something.
-      </p>
+      <div>
+        <h2>The four sources, before fusion</h2>
+        <p class="muted">
+          Each source runs on its own and never sees the others&rsquo; output.
+          That independence is what makes agreement mean something.
+        </p>
+      </div>
     </div>
     <div class="sources" id="sourcePanel"></div>
   </section>
 
-  <section class="panel" id="rejectedPanel">
+  <section class="panel rejected-panel">
     <div class="panel-head">
-      <h2>Rejected clusters</h2>
-      <p>
-        Levels that landed together but came from too few distinct sources.
-        &ldquo;No zone here&rdquo; is itself a finding, so they are shown rather than dropped.
-      </p>
+      <div>
+        <h2>Rejected clusters</h2>
+        <p class="muted">
+          Levels that landed together but came from too few distinct sources.
+          &ldquo;No zone here&rdquo; is a finding, so they are shown rather than dropped.
+        </p>
+      </div>
     </div>
     <div class="table-scroll">
       <table class="zones" id="rejectedTable"></table>
     </div>
   </section>
 
-  <section class="panel">
-    <div class="panel-head">
-      <h2>Pipeline</h2>
-      <p>Every stage, the topic that did the work, and how strongly it is attested.</p>
-    </div>
-    <ol class="trace" id="trace"></ol>
-  </section>
-
-  <section class="panel">
-    <div class="panel-head">
-      <h2>Data quality</h2>
-      <p>What the vendor sent, and what survived.</p>
-    </div>
-    <div class="quality" id="quality"></div>
-  </section>
-
 </main>
-
-<div id="status" class="status"></div>
 
 <footer class="footer">
   <p>
-    Analysis, not advice. These functions compute quantities; an indicator or a
-    level is an observation about a series, not a prediction and not a
-    recommendation. <strong>8 of the 13 topics used are <span class="tier tier-contract">contract</span></strong>
-    &mdash; their shape is checked but their arithmetic is not cross-checked against
-    an independent published figure.
+    <strong>Analysis, not advice.</strong> These are computed quantities describing a
+    price series. A level is an observation, not a prediction and not a
+    recommendation &mdash; for decisions about money, talk to a licensed adviser.
+  </p>
+  <p class="muted">
+    Every figure carries its verification tier.
+    <em>verified</em> &mdash; the library replays and asserts the worked example on every build.
+    <em>contract</em> &mdash; signature and shape are checked, the arithmetic is not
+    cross-checked against an independent published figure.
+    <em>approximation</em> &mdash; this app shaped data the vendor could not supply;
+    only the volume-profile tape is in this class.
+    Touch counts, break counts and rejection excursions are computed by
+    <em>this app</em>, not by the library.
   </p>
 </footer>
 
