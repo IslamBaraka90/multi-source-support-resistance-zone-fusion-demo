@@ -32,6 +32,14 @@
 
 * { box-sizing: border-box; }
 
+/*
+ * The `hidden` attribute only works through the UA stylesheet's
+ * `[hidden] { display: none }`, which ANY author-level `display` declaration
+ * outranks — and `.simple` and `.layout` are both `display: grid`, so both
+ * views rendered at once. This puts `hidden` back in charge.
+ */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--bg);
